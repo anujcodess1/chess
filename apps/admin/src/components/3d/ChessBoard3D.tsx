@@ -294,6 +294,8 @@ export const ChessBoard3D: React.FC<ChessBoard3DProps> = ({
       rendererRef.current.setSize(container.clientWidth, container.clientHeight);
     };
     window.addEventListener('resize', handleResize);
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(container);
 
     // Animation Loop
     let animId: number;
@@ -310,6 +312,7 @@ export const ChessBoard3D: React.FC<ChessBoard3DProps> = ({
       window.removeEventListener('pointerup', onPointerUp);
       dom.removeEventListener('wheel', onWheel);
       window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
       renderer.dispose();
       while (container.firstChild) {
         container.removeChild(container.firstChild);

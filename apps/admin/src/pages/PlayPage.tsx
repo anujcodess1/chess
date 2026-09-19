@@ -545,6 +545,7 @@ export const PlayPage: React.FC = () => {
         backgroundImage: 'radial-gradient(ellipse at 50% 0%, rgba(255, 255, 255, 0.05) 0%, transparent 60%)',
         color: '#ffffff',
         display: 'flex',
+        flexWrap: 'wrap',
         padding: '32px 40px',
         gap: '32px',
         fontFamily: "'Poppins', sans-serif",
@@ -553,7 +554,7 @@ export const PlayPage: React.FC = () => {
       {/* 3D Chessboard Stage (Left / Center) */}
       <div
         style={{
-          flex: '1 1 65%',
+          flex: '2 1 520px',
           display: 'flex',
           flexDirection: 'column',
           gap: '18px',
@@ -924,7 +925,7 @@ export const PlayPage: React.FC = () => {
       {/* Side Control Panel (Right) */}
       <div
         style={{
-          flex: '0 0 380px',
+          flex: '1 1 380px',
           display: 'flex',
           flexDirection: 'column',
           gap: '20px',

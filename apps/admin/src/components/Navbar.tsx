@@ -28,6 +28,7 @@ export const Navbar: React.FC = () => {
 
   return (
     <header
+      className="site-nav"
       style={{
         position: 'sticky',
         top: 0,
@@ -69,7 +70,7 @@ export const Navbar: React.FC = () => {
       </Link>
 
       {/* Spacious Navigation Tabs */}
-      <nav style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+      <nav className="site-nav__links" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
         {navLinks.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.path;
@@ -93,7 +94,7 @@ export const Navbar: React.FC = () => {
               }}
             >
               <Icon size={16} strokeWidth={isActive ? 2.4 : 1.8} />
-              <span>{item.label}</span>
+              <span className="site-nav__label">{item.label}</span>
             </Link>
           );
         })}
@@ -107,7 +108,7 @@ export const Navbar: React.FC = () => {
               <div style={{ fontSize: '13px', fontWeight: 700, color: '#ffffff' }}>
                 {account.displayName || account.username}
               </div>
-              <div style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 600 }}>
+              <div className="site-nav__elo" style={{ fontSize: '11px', color: '#a1a1aa', fontWeight: 600 }}>
                 {account.ratings.rapid} Elo Rating
               </div>
             </div>
@@ -132,7 +133,7 @@ export const Navbar: React.FC = () => {
               }}
             >
               <LogOut size={14} />
-              <span>Exit</span>
+              <span className="site-nav__exit-label">Exit</span>
             </button>
           </div>
         )}

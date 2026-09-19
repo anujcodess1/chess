@@ -1875,3 +1875,31 @@ button.movelist__san.is-active {
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------- Navbar responsive (narrow screens / mobile) ---------- */
+@media (max-width: 900px) {
+  .site-nav {
+    padding: 0 16px !important;
+    gap: 8px;
+  }
+
+  .site-nav__links {
+    gap: 4px !important;
+  }
+
+  .site-nav__links a {
+    padding: 8px 10px !important;
+  }
+
+  .site-nav__label {
+    display: none;
+  }
+
+  .site-nav__elo {
+    display: none;
+  }
+
+  .site-nav__exit-label {
+    display: none;
+  }
+}
