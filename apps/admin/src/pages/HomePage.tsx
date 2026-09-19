@@ -148,7 +148,7 @@ export const HomePage: React.FC = () => {
       return;
     }
 
-    const myId = currentUser?.id || onlineService.getPlayerId();
+    const myId = onlineService.getPlayerId();
     const hostInfo: OnlinePlayerInfo = {
       id: myId,
       username: currentUser?.username || `Host_${myId.substring(myId.length - 4)}`,
@@ -205,7 +205,7 @@ export const HomePage: React.FC = () => {
     setIsJoining(true);
     setJoinError(null);
 
-    const myId = currentUser?.id || onlineService.getPlayerId();
+    const myId = onlineService.getPlayerId();
     const playerInfo: OnlinePlayerInfo = {
       id: myId,
       username: currentUser?.username || `Guest_${myId.substring(myId.length - 4)}`,

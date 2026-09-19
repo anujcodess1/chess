@@ -1,21 +1,12 @@
 /**
- * Local Online Multiplayer & Matchmaking Engine for Grand Chess.
- * Handles random player queue, instant pairing across windows/tabs,
- * room codes, live moves, in-game chat, and presence — all without a server.
+ * Real-Time Online Multiplayer & Matchmaking Engine for Grand Chess.
+ * Handles random player queue, instant pairing across windows/tabs/devices,
+ * room codes, live moves, in-game chat, and active presence.
+ *
+ * Pairing runs through the in-memory matchmaking endpoints served by the Vite
+ * dev/preview server (src/server/matchmakingPlugin.ts), with a local
+ * BroadcastChannel bus as a same-browser fast path and offline fallback.
  */
-
-const ROOMS_STORAGE_KEY = 'grand_chess_rooms';
-const ROOM_TTL_MS = 5 * 60 * 60 * 1000;
-
-interface StoredRoom {
-  roomId: string;
-  name: string;
-  password?: string;
-  timeControl: string;
-  colorPreference: 'white' | 'black' | 'random';
-  host: OnlinePlayerInfo;
-  createdAt: number;
-}
 
 export interface OnlineMovePayload {
   from: string;
@@ -69,6 +60,7 @@ class OnlineManager {
   private channel: BroadcastChannel | null = null;
   private listeners: Set<MessageCallback> = new Set();
   private presenceListeners: Set<PresenceCallback> = new Set();
+  private sseEventSource: EventSource | null = null;
   private pendingQueuePlayer: { player: OnlinePlayerInfo; timeControl: string; timestamp: number } | null = null;
   private currentPresence: PresenceStats = { onlineCount: 1, queueCount: 0, activeMatchesCount: 0 };
   private myPlayerId: string = getOrCreatePlayerSessionId();
@@ -76,6 +68,7 @@ class OnlineManager {
   constructor() {
     this.initBroadcastChannel();
     this.initStorageListener();
+    this.connectServerEvents();
   }
 
   public getPlayerId(): string {
@@ -108,8 +101,95 @@ class OnlineManager {
     }
   }
 
+  public connectServerEvents(username = 'Guest'): void {
+    if (typeof window === 'undefined') return;
+
+    if (this.sseEventSource) {
+      this.sseEventSource.close();
+    }
+
+    try {
+      const sseUrl = `/api/matchmaking/events?playerId=${encodeURIComponent(this.myPlayerId)}&username=${encodeURIComponent(username)}`;
+      const es = new EventSource(sseUrl);
+
+      es.addEventListener('PRESENCE', (e) => {
+        try {
+          const stats = JSON.parse(e.data) as PresenceStats;
+          this.currentPresence = stats;
+          this.notifyPresence(stats);
+        } catch {}
+      });
+
+      es.addEventListener('QUEUE_MATCH_FOUND', (e) => {
+        try {
+          const msg = JSON.parse(e.data) as OnlineMessage;
+          this.handleIncoming(msg);
+        } catch {}
+      });
+
+      es.addEventListener('MOVE', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          this.handleIncoming({
+            type: 'MOVE',
+            matchId: data.matchId,
+            roomCode: data.matchId,
+            senderId: data.senderId,
+            move: data.move,
+          });
+        } catch {}
+      });
+
+      es.addEventListener('CHAT', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          this.handleIncoming({
+            type: 'CHAT',
+            matchId: data.matchId,
+            roomCode: data.matchId,
+            senderName: data.senderName,
+            text: data.text,
+          });
+        } catch {}
+      });
+
+      es.addEventListener('ROOM_JOIN', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          this.handleIncoming({
+            type: 'ROOM_JOIN',
+            roomCode: data.roomCode,
+            player: data.player,
+          });
+        } catch {}
+      });
+
+      es.addEventListener('RESIGN', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          this.handleIncoming({
+            type: 'RESIGN',
+            matchId: data.matchId,
+            roomCode: data.matchId,
+            senderId: data.senderId,
+          });
+        } catch {}
+      });
+
+      es.onerror = () => {
+        // Retry connection after 5 seconds if dropped
+        es.close();
+        setTimeout(() => this.connectServerEvents(username), 5000);
+      };
+
+      this.sseEventSource = es;
+    } catch {
+      // Offline fallback
+    }
+  }
+
   private handleIncoming(msg: OnlineMessage): void {
-    // 1. Cross-tab pairing logic if both tabs are local and server response is pending
+    // Cross-tab pairing when a second local tab joins the same queue.
     if (msg.type === 'QUEUE_ENTER' && this.pendingQueuePlayer) {
       if (msg.player.id !== this.pendingQueuePlayer.player.id && msg.timeControl === this.pendingQueuePlayer.timeControl) {
         const matchId = `match_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
@@ -144,17 +224,48 @@ class OnlineManager {
   public async registerInQueue(player: OnlinePlayerInfo, timeControl: string): Promise<void> {
     this.pendingQueuePlayer = { player, timeControl, timestamp: Date.now() };
 
-    // Notify local tabs via broadcast
+    // 1. Notify local tabs via broadcast
     this.broadcast({
       type: 'QUEUE_ENTER',
       player,
       timeControl,
       timestamp: Date.now(),
     });
+
+    // 2. Submit to the matchmaking service for cross-browser pairing
+    try {
+      const resp = await fetch('/api/matchmaking/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: player.id,
+          username: player.username,
+          rating: player.rating,
+          timeControl,
+          title: player.title,
+        }),
+      });
+
+      if (resp.ok) {
+        const result = await resp.json();
+        if (result.status === 'matched' && result.match) {
+          this.broadcast(result.match);
+        }
+      }
+    } catch {
+      // Service unreachable — BroadcastChannel still pairs local tabs
+    }
   }
 
   public async cancelQueue(): Promise<void> {
     this.pendingQueuePlayer = null;
+    try {
+      await fetch('/api/matchmaking/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: this.myPlayerId }),
+      });
+    } catch {}
   }
 
   public async sendMove(matchId: string, move: OnlineMovePayload): Promise<void> {
@@ -165,6 +276,18 @@ class OnlineManager {
       senderId: this.myPlayerId,
       move,
     });
+
+    try {
+      await fetch('/api/matchmaking/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          matchId,
+          senderId: this.myPlayerId,
+          move,
+        }),
+      });
+    } catch {}
   }
 
   public async sendChat(matchId: string, senderName: string, text: string): Promise<void> {
@@ -175,6 +298,19 @@ class OnlineManager {
       senderName,
       text,
     });
+
+    try {
+      await fetch('/api/matchmaking/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          matchId,
+          senderId: this.myPlayerId,
+          senderName,
+          text,
+        }),
+      });
+    } catch {}
   }
 
   public async sendResign(matchId: string): Promise<void> {
@@ -184,6 +320,18 @@ class OnlineManager {
       matchId,
       senderId: this.myPlayerId,
     });
+
+    try {
+      await fetch('/api/matchmaking/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          matchId,
+          senderId: this.myPlayerId,
+          action: 'RESIGN',
+        }),
+      });
+    } catch {}
   }
 
   public async joinCustomRoom(roomCode: string, player: OnlinePlayerInfo): Promise<void> {
@@ -192,6 +340,17 @@ class OnlineManager {
       roomCode,
       player,
     });
+
+    try {
+      await fetch('/api/matchmaking/room', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomCode,
+          player,
+        }),
+      });
+    } catch {}
   }
 
   // Room Creation with Password and 30s Cooldown Enforcement
@@ -202,26 +361,6 @@ class OnlineManager {
     return remaining > 0 ? remaining : 0;
   }
 
-  private readRooms(): Record<string, StoredRoom> {
-    try {
-      const raw = localStorage.getItem(ROOMS_STORAGE_KEY);
-      if (!raw) return {};
-      const rooms = JSON.parse(raw) as Record<string, StoredRoom>;
-      const now = Date.now();
-      let changed = false;
-      for (const [id, room] of Object.entries(rooms)) {
-        if (!room || now - room.createdAt > ROOM_TTL_MS) {
-          delete rooms[id];
-          changed = true;
-        }
-      }
-      if (changed) localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(rooms));
-      return rooms;
-    } catch {
-      return {};
-    }
-  }
-
   public async createCustomRoom(params: {
     name: string;
     password?: string;
@@ -230,41 +369,55 @@ class OnlineManager {
     host: OnlinePlayerInfo;
     customRoomId?: string;
   }): Promise<{ ok: boolean; roomId?: string; error?: string; remainingSeconds?: number; room?: any }> {
-    const localCooldown = this.getRemainingRoomCooldown();
-    if (localCooldown > 0) {
-      return { ok: false, error: 'COOLDOWN', remainingSeconds: localCooldown };
-    }
-
-    const roomId = (params.customRoomId || `FOREST-${Math.floor(1000 + Math.random() * 9000)}`).toUpperCase();
-    const rooms = this.readRooms();
-    const room: StoredRoom = {
-      roomId,
-      name: params.name,
-      password: params.password || undefined,
-      timeControl: params.timeControl,
-      colorPreference: params.colorPreference,
-      host: params.host,
-      createdAt: Date.now(),
-    };
-    rooms[roomId] = room;
     try {
-      localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(rooms));
-    } catch {}
+      const resp = await fetch('/api/matchmaking/room/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
 
-    return { ok: true, roomId, room: { ...room, hasPassword: Boolean(room.password) } };
+      const data = await resp.json();
+      if (!resp.ok) {
+        if (resp.status === 429) {
+          sessionStorage.setItem('room_cooldown_until', String(Date.now() + (data.remainingSeconds || 30) * 1000));
+        }
+        return { ok: false, error: data.error || 'Failed to create room', remainingSeconds: data.remainingSeconds };
+      }
+
+      return { ok: true, roomId: data.roomId, room: data.room };
+    } catch {
+      // Matchmaking service unreachable — local room code fallback
+      const roomId = (params.customRoomId || `FOREST-${Math.floor(1000 + Math.random() * 9000)}`).toUpperCase();
+      return {
+        ok: true,
+        roomId,
+        room: {
+          roomId,
+          name: params.name,
+          hasPassword: Boolean(params.password),
+          timeControl: params.timeControl,
+          colorPreference: params.colorPreference,
+          host: params.host,
+        },
+      };
+    }
   }
 
   public async closeCustomRoom(roomId: string): Promise<{ ok: boolean; cooldownSeconds: number }> {
-    const cooldownUntil = Date.now() + 30000;
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('room_cooldown_until', String(cooldownUntil));
-    }
-
-    const rooms = this.readRooms();
-    delete rooms[roomId.trim().toUpperCase()];
     try {
-      localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(rooms));
+      await fetch('/api/matchmaking/room/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomId,
+          playerId: this.myPlayerId,
+        }),
+      });
     } catch {}
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('room_cooldown_until', String(Date.now() + 30000));
+    }
 
     return { ok: true, cooldownSeconds: 30 };
   }
@@ -274,35 +427,40 @@ class OnlineManager {
     password: string | undefined,
     player: OnlinePlayerInfo
   ): Promise<{ ok: boolean; match?: any; error?: string; message?: string }> {
-    const code = roomId.trim().toUpperCase();
-    const room = this.readRooms()[code];
+    try {
+      const resp = await fetch('/api/matchmaking/room/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomId: roomId.trim().toUpperCase(),
+          password: password ? password.trim() : undefined,
+          player,
+        }),
+      });
 
-    if (!room) {
-      return { ok: false, error: 'ROOM_NOT_FOUND', message: 'Room not found. Ask the host to create it again.' };
-    }
-    if (room.password && room.password !== (password ?? '').trim()) {
-      return { ok: false, error: 'WRONG_PASSWORD', message: 'Incorrect room password.' };
-    }
-    if (room.host.id === player.id) {
-      return { ok: false, error: 'HOST_JOIN', message: 'You are the host of this room — enter it from the room card.' };
-    }
+      const data = await resp.json();
+      if (!resp.ok) {
+        return { ok: false, error: data.error, message: data.message || 'Failed to join room' };
+      }
 
-    this.broadcast({ type: 'ROOM_JOIN', roomCode: code, player });
-    return { ok: true };
+      if (data.match) {
+        this.broadcast(data.match);
+      }
+      return { ok: true, match: data.match };
+    } catch (err: any) {
+      return { ok: false, error: 'NETWORK_ERROR', message: err.message || 'Network error' };
+    }
   }
 
   public async fetchOpenRooms(): Promise<Array<{ roomId: string; name: string; timeControl: string; hasPassword: boolean; hostName: string; hostRating: number }>> {
-    const rooms = this.readRooms();
-    return Object.values(rooms)
-      .filter((room) => room.host.id !== this.myPlayerId)
-      .map((room) => ({
-        roomId: room.roomId,
-        name: room.name,
-        timeControl: room.timeControl,
-        hasPassword: Boolean(room.password),
-        hostName: room.host.username,
-        hostRating: room.host.rating,
-      }));
+    try {
+      const resp = await fetch('/api/matchmaking/rooms');
+      if (resp.ok) {
+        const data = await resp.json();
+        return data.rooms || [];
+      }
+    } catch {}
+    return [];
   }
 
   public subscribe(cb: MessageCallback): () => void {
@@ -336,6 +494,14 @@ class OnlineManager {
     for (const listener of this.listeners) {
       try {
         listener(msg);
+      } catch {}
+    }
+  }
+
+  private notifyPresence(stats: PresenceStats): void {
+    for (const listener of this.presenceListeners) {
+      try {
+        listener(stats);
       } catch {}
     }
   }

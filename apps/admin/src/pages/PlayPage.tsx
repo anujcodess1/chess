@@ -142,7 +142,7 @@ export const PlayPage: React.FC = () => {
 
   // Online Bus Listener
   useEffect(() => {
-    const myId = currentUser?.id || onlineService.getPlayerId();
+    const myId = onlineService.getPlayerId();
 
     const unsub = onlineService.subscribe((msg: OnlineMessage) => {
       // 1. Queue Match Found Event (Random Matchmaking)
@@ -203,7 +203,7 @@ export const PlayPage: React.FC = () => {
     setOnlineOpponent(null);
     handleStartNewGame();
 
-    const myId = currentUser?.id || onlineService.getPlayerId();
+    const myId = onlineService.getPlayerId();
     const myInfo: OnlinePlayerInfo = {
       id: myId,
       username: currentUser?.username || `Player_${myId.substring(myId.length - 4)}`,
@@ -500,7 +500,7 @@ export const PlayPage: React.FC = () => {
     setMatchmakingState('matched');
     setIsGameActive(true);
 
-    const myId = currentUser?.id || onlineService.getPlayerId();
+    const myId = onlineService.getPlayerId();
     onlineService.joinCustomRoom(code, {
       id: myId,
       username: currentUser?.username || `Guest_${myId.substring(myId.length - 4)}`,
