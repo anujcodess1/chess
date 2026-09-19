@@ -1,0 +1,21 @@
+{
+  "name": "chess-platform",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Grand Chess — 3D chess web app (browser only, no server needed)",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @chess/admin dev",
+    "build": "pnpm --filter @chess/admin build",
+    "preview": "pnpm --filter @chess/admin preview",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "pnpm": {
+    "overrides": {
+      "typescript": "5.9.3"
+    }
+  }
+}

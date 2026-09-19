@@ -1,0 +1,9 @@
+{
+  "extends": "@chess/config/tsconfig/react.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["vite/client"]
+  },
+  "include": ["src", "vite.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}
