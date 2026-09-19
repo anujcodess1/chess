@@ -57,17 +57,13 @@ export function getOrCreatePlayerSessionId(): string {
 }
 
 class OnlineManager {
-  private channel: BroadcastChannel | null = null;
   private listeners: Set<MessageCallback> = new Set();
   private presenceListeners: Set<PresenceCallback> = new Set();
   private sseEventSource: EventSource | null = null;
-  private pendingQueuePlayer: { player: OnlinePlayerInfo; timeControl: string; timestamp: number } | null = null;
   private currentPresence: PresenceStats = { onlineCount: 1, queueCount: 0, activeMatchesCount: 0 };
   private myPlayerId: string = getOrCreatePlayerSessionId();
 
   constructor() {
-    this.initBroadcastChannel();
-    this.initStorageListener();
     this.connectServerEvents();
   }
 
@@ -77,28 +73,6 @@ class OnlineManager {
 
   public getPresence(): PresenceStats {
     return this.currentPresence;
-  }
-
-  private initBroadcastChannel(): void {
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      this.channel = new BroadcastChannel('grand_chess_online_bus');
-      this.channel.onmessage = (event) => {
-        this.handleIncoming(event.data as OnlineMessage);
-      };
-    }
-  }
-
-  private initStorageListener(): void {
-    if (typeof window !== 'undefined') {
-      window.addEventListener('storage', (e) => {
-        if (e.key === 'grand_chess_online_packet' && e.newValue) {
-          try {
-            const data = JSON.parse(e.newValue) as OnlineMessage;
-            this.handleIncoming(data);
-          } catch {}
-        }
-      });
-    }
   }
 
   public connectServerEvents(username = 'Guest'): void {
@@ -189,50 +163,11 @@ class OnlineManager {
   }
 
   private handleIncoming(msg: OnlineMessage): void {
-    // Cross-tab pairing when a second local tab joins the same queue.
-    if (msg.type === 'QUEUE_ENTER' && this.pendingQueuePlayer) {
-      if (msg.player.id !== this.pendingQueuePlayer.player.id && msg.timeControl === this.pendingQueuePlayer.timeControl) {
-        const matchId = `match_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-        const isSelfWhite = Math.random() > 0.5;
-
-        const whitePlayer: OnlinePlayerInfo = {
-          ...this.pendingQueuePlayer.player,
-          color: isSelfWhite ? 'white' : 'black',
-        };
-
-        const blackPlayer: OnlinePlayerInfo = {
-          ...msg.player,
-          color: isSelfWhite ? 'black' : 'white',
-        };
-
-        this.broadcast({
-          type: 'QUEUE_MATCH_FOUND',
-          matchId,
-          whitePlayer: isSelfWhite ? whitePlayer : blackPlayer,
-          blackPlayer: isSelfWhite ? blackPlayer : whitePlayer,
-          timeControl: msg.timeControl,
-        });
-
-        this.pendingQueuePlayer = null;
-        return;
-      }
-    }
-
     this.emit(msg);
   }
 
   public async registerInQueue(player: OnlinePlayerInfo, timeControl: string): Promise<void> {
-    this.pendingQueuePlayer = { player, timeControl, timestamp: Date.now() };
-
-    // 1. Notify local tabs via broadcast
-    this.broadcast({
-      type: 'QUEUE_ENTER',
-      player,
-      timeControl,
-      timestamp: Date.now(),
-    });
-
-    // 2. Submit to the matchmaking service for cross-browser pairing
+    // Submit to the matchmaking service (pairs tabs and browsers alike)
     try {
       const resp = await fetch('/api/matchmaking/queue', {
         method: 'POST',
@@ -249,16 +184,13 @@ class OnlineManager {
       if (resp.ok) {
         const result = await resp.json();
         if (result.status === 'matched' && result.match) {
-          this.broadcast(result.match);
+          this.emit(result.match);
         }
       }
-    } catch {
-      // Service unreachable — BroadcastChannel still pairs local tabs
-    }
+    } catch {}
   }
 
   public async cancelQueue(): Promise<void> {
-    this.pendingQueuePlayer = null;
     try {
       await fetch('/api/matchmaking/cancel', {
         method: 'POST',
@@ -479,14 +411,6 @@ class OnlineManager {
   }
 
   public broadcast(msg: OnlineMessage): void {
-    if (this.channel) {
-      try {
-        this.channel.postMessage(msg);
-      } catch {}
-    }
-    try {
-      localStorage.setItem('grand_chess_online_packet', JSON.stringify({ ...msg, _t: Date.now() }));
-    } catch {}
     this.emit(msg);
   }
 

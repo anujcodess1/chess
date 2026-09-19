@@ -86,7 +86,20 @@ export function matchmakingPlugin(): Plugin {
     openRoomsCount: Array.from(customRooms.values()).filter((r) => r.status === 'waiting').length,
   });
 
+  // Remove queued players who disconnected or waited too long, so nobody
+  // gets paired with a ghost.
+  const pruneQueue = () => {
+    const cutoff = Date.now() - 5 * 60 * 1000;
+    for (let i = matchmakingQueue.length - 1; i >= 0; i--) {
+      const p = matchmakingQueue[i]!;
+      if (p.joinedAt < cutoff || !connectedClients.has(p.id)) {
+        matchmakingQueue.splice(i, 1);
+      }
+    }
+  };
+
   const broadcastPresence = () => {
+    pruneQueue();
     broadcastToAll('PRESENCE', getStats());
   };
 
@@ -179,6 +192,8 @@ export function matchmakingPlugin(): Plugin {
         res.end(JSON.stringify({ error: 'Missing player id' }));
         return;
       }
+
+      pruneQueue();
 
       const opponentIdx = matchmakingQueue.findIndex(
         (p) => p.id !== player.id && (p.timeControl === player.timeControl || matchmakingQueue.length > 2)
