@@ -101,7 +101,7 @@ export const Navbar: React.FC = () => {
 
       {/* User Info & Actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-        {account ? (
+        {account && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: '13px', fontWeight: 700, color: '#ffffff' }}>
@@ -135,23 +135,6 @@ export const Navbar: React.FC = () => {
               <span>Exit</span>
             </button>
           </div>
-        ) : (
-          <Link
-            to="/auth"
-            style={{
-              padding: '9px 20px',
-              borderRadius: '9999px',
-              background: '#ffffff',
-              color: '#000000',
-              textDecoration: 'none',
-              fontSize: '13px',
-              fontWeight: 700,
-              boxShadow: '0 4px 18px rgba(255, 255, 255, 0.2)',
-              transition: 'transform 0.15s ease',
-            }}
-          >
-            Sign In / Register
-          </Link>
         )}
       </div>
     </header>

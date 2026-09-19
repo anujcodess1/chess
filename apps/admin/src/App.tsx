@@ -19,15 +19,25 @@ function PlayerLayout() {
   );
 }
 
-export function App() {
+function RequireAuth() {
   const session = useSession();
+  if (!session) return <Navigate to="/auth" replace />;
+  return <PlayerLayout />;
+}
 
+function AuthPageRoute() {
+  const session = useSession();
+  if (session) return <Navigate to="/" replace />;
+  return <AuthPage />;
+}
+
+export function App() {
   return (
     <Routes>
-      <Route path="/auth" element={<AuthPage />} />
-      <Route path="/login" element={<AuthPage />} />
+      <Route path="/auth" element={<AuthPageRoute />} />
+      <Route path="/login" element={<AuthPageRoute />} />
 
-      <Route element={<PlayerLayout />}>
+      <Route element={<RequireAuth />}>
         <Route index element={<HomePage />} />
         <Route path="/play" element={<PlayPage />} />
         <Route path="/puzzles" element={<PuzzlesPage />} />
