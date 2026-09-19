@@ -56,7 +56,7 @@ const CURRENT_USER_KEY = 'grand_chess_current_user';
 const GAME_HISTORY_KEY = 'grand_chess_history';
 const SOLVED_PUZZLES_KEY = 'grand_chess_solved_puzzles';
 const DATA_VERSION_KEY = 'grand_chess_data_version';
-const DATA_VERSION = '2';
+const DATA_VERSION = '3';
 
 // One-time purge: wipe any previously stored accounts, sessions and demo data.
 (function purgeStoredData() {
@@ -65,6 +65,7 @@ const DATA_VERSION = '2';
     localStorage.removeItem(USERS_STORAGE_KEY);
     localStorage.removeItem(CURRENT_USER_KEY);
     localStorage.removeItem(GAME_HISTORY_KEY);
+    localStorage.removeItem(SOLVED_PUZZLES_KEY);
     localStorage.removeItem('auth_access_token');
     localStorage.removeItem('auth_refresh_token');
     localStorage.removeItem('grand_chess_player_session');
