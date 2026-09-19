@@ -45,7 +45,7 @@ export const AuthPage: React.FC = () => {
       });
 
       setIsLoading(false);
-      navigate('/play');
+      navigate('/');
     }, 250);
   };
 
@@ -78,7 +78,7 @@ export const AuthPage: React.FC = () => {
       });
 
       setIsLoading(false);
-      navigate('/play');
+      navigate('/');
     }, 300);
   };
 

@@ -16,9 +16,11 @@ export const Navbar: React.FC = () => {
     navigate('/auth');
   };
 
+  const inArena = location.pathname === '/play';
+
   const navLinks = [
     { path: '/', label: 'Home Lobby', icon: Home },
-    { path: '/play', label: 'Battle Arena', icon: Swords },
+    ...(inArena ? [{ path: '/play', label: 'Battle Arena', icon: Swords }] : []),
     { path: '/puzzles', label: 'Daily Puzzles', icon: Puzzle },
     { path: '/leaderboard', label: 'Leaderboard', icon: Trophy },
     { path: '/profile', label: 'My Profile', icon: User },
