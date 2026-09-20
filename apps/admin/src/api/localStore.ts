@@ -1,8 +1,3 @@
-/**
- * Browser-only persistent store for Grand Chess.
- * Handles accounts, profiles, ratings, game history and puzzle state via localStorage.
- */
-
 export interface UserAccount {
   id: string;
   username: string;
@@ -58,7 +53,6 @@ const SOLVED_PUZZLES_KEY = 'grand_chess_solved_puzzles';
 const DATA_VERSION_KEY = 'grand_chess_data_version';
 const DATA_VERSION = '4';
 
-// One-time purge: wipe any previously stored accounts, sessions and demo data.
 (function purgeStoredData() {
   try {
     if (localStorage.getItem(DATA_VERSION_KEY) === DATA_VERSION) return;
@@ -70,9 +64,7 @@ const DATA_VERSION = '4';
     localStorage.removeItem('auth_refresh_token');
     localStorage.removeItem('grand_chess_player_session');
     localStorage.setItem(DATA_VERSION_KEY, DATA_VERSION);
-  } catch {
-    /* localStorage unavailable */
-  }
+  } catch {}
 })();
 
 export const DAILY_PUZZLES: DailyPuzzle[] = [
@@ -237,7 +229,6 @@ export const LocalStore = {
       const updated = [item, ...existing].slice(0, 50);
       localStorage.setItem(GAME_HISTORY_KEY, JSON.stringify(updated));
 
-      // Update current user stats
       const user = this.getCurrentUser();
       if (user) {
         user.stats.gamesPlayed += 1;
@@ -245,7 +236,6 @@ export const LocalStore = {
         else if (item.result === 'loss') user.stats.losses += 1;
         else user.stats.draws += 1;
 
-        // Apply rating change
         const cat = item.timeControl.toLowerCase() as keyof UserAccount['ratings'];
         if (user.ratings[cat] !== undefined) {
           user.ratings[cat] = Math.max(100, user.ratings[cat] + item.ratingChange);

@@ -1,13 +1,3 @@
-/**
- * Real-Time Online Multiplayer & Matchmaking Engine for Grand Chess.
- * Handles random player queue, instant pairing across windows/tabs/devices,
- * room codes, live moves, in-game chat, and active presence.
- *
- * Pairing runs through the in-memory matchmaking endpoints served by the Vite
- * dev/preview server (src/server/matchmakingPlugin.ts), with a local
- * BroadcastChannel bus as a same-browser fast path and offline fallback.
- */
-
 export interface OnlineMovePayload {
   from: string;
   to: string;
@@ -151,15 +141,12 @@ class OnlineManager {
       });
 
       es.onerror = () => {
-        // Retry connection after 5 seconds if dropped
         es.close();
         setTimeout(() => this.connectServerEvents(username), 5000);
       };
 
       this.sseEventSource = es;
-    } catch {
-      // Offline fallback
-    }
+    } catch {}
   }
 
   private handleIncoming(msg: OnlineMessage): void {
@@ -167,7 +154,6 @@ class OnlineManager {
   }
 
   public async registerInQueue(player: OnlinePlayerInfo, timeControl: string): Promise<void> {
-    // Submit to the matchmaking service (pairs tabs and browsers alike)
     try {
       const resp = await fetch('/api/matchmaking/queue', {
         method: 'POST',
@@ -285,7 +271,6 @@ class OnlineManager {
     } catch {}
   }
 
-  // Room Creation with Password and 30s Cooldown Enforcement
   public getRemainingRoomCooldown(): number {
     if (typeof window === 'undefined') return 0;
     const until = Number(sessionStorage.getItem('room_cooldown_until') || 0);
@@ -318,7 +303,6 @@ class OnlineManager {
 
       return { ok: true, roomId: data.roomId, room: data.room };
     } catch {
-      // Matchmaking service unreachable — local room code fallback
       const roomId = (params.customRoomId || `FOREST-${Math.floor(1000 + Math.random() * 9000)}`).toUpperCase();
       return {
         ok: true,

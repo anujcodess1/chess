@@ -33,15 +33,12 @@ export interface CustomRoomRecord {
 }
 
 export function matchmakingPlugin(): Plugin {
-  // In-memory state for Vite dev/preview server
   const connectedClients = new Map<string, { res: ServerResponse; username: string; lastSeen: number }>();
   const matchmakingQueue: QueuedPlayer[] = [];
   const activeMatches = new Map<string, ActiveMatch>();
   const customRooms = new Map<string, CustomRoomRecord>();
-  // 30-second room creation cooldown per user when a room is closed
   const roomCooldowns = new Map<string, number>();
 
-  // Helper to parse JSON body
   const parseJsonBody = async (req: IncomingMessage): Promise<any> => {
     return new Promise((resolve) => {
       let data = '';
@@ -58,7 +55,6 @@ export function matchmakingPlugin(): Plugin {
     });
   };
 
-  // Helper to send SSE event to a specific client
   const sendToClient = (playerId: string, eventName: string, payload: any) => {
     const client = connectedClients.get(playerId);
     if (client && !client.res.writableEnded) {
@@ -66,7 +62,6 @@ export function matchmakingPlugin(): Plugin {
     }
   };
 
-  // Helper to broadcast SSE event to all connected clients
   const broadcastToAll = (eventName: string, payload: any) => {
     for (const [id, client] of connectedClients.entries()) {
       if (!client.res.writableEnded) {
@@ -86,8 +81,6 @@ export function matchmakingPlugin(): Plugin {
     openRoomsCount: Array.from(customRooms.values()).filter((r) => r.status === 'waiting').length,
   });
 
-  // Remove queued players who disconnected or waited too long, so nobody
-  // gets paired with a ghost.
   const pruneQueue = () => {
     const cutoff = Date.now() - 5 * 60 * 1000;
     for (let i = matchmakingQueue.length - 1; i >= 0; i--) {
@@ -103,7 +96,6 @@ export function matchmakingPlugin(): Plugin {
     broadcastToAll('PRESENCE', getStats());
   };
 
-  // Middleware handler
   const handleRequest = async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
     const pathname = url.pathname;
@@ -112,7 +104,6 @@ export function matchmakingPlugin(): Plugin {
       return next();
     }
 
-    // Enable CORS for all requests
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -123,7 +114,6 @@ export function matchmakingPlugin(): Plugin {
       return;
     }
 
-    // 1. SSE Events stream
     if (pathname === '/api/matchmaking/events' && req.method === 'GET') {
       const playerId = url.searchParams.get('playerId') || `guest_${Date.now()}`;
       const username = url.searchParams.get('username') || 'Guest Player';
@@ -142,11 +132,9 @@ export function matchmakingPlugin(): Plugin {
         lastSeen: Date.now(),
       });
 
-      // Send initial presence
       res.write(`event: PRESENCE\ndata: ${JSON.stringify(getStats())}\n\n`);
       broadcastPresence();
 
-      // Keep-alive heartbeat
       const heartbeat = setInterval(() => {
         if (!res.writableEnded) {
           res.write(': ping\n\n');
@@ -168,14 +156,12 @@ export function matchmakingPlugin(): Plugin {
       return;
     }
 
-    // 2. Stats
     if (pathname === '/api/matchmaking/stats' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(getStats()));
       return;
     }
 
-    // 3. Queue Enter (Random Matchmaking)
     if (pathname === '/api/matchmaking/queue' && req.method === 'POST') {
       const body = await parseJsonBody(req);
       const player: QueuedPlayer = {
@@ -250,7 +236,6 @@ export function matchmakingPlugin(): Plugin {
       return;
     }
 
-    // 4. Cancel Queue
     if (pathname === '/api/matchmaking/cancel' && req.method === 'POST') {
       const body = await parseJsonBody(req);
       const playerId = body.playerId;
@@ -264,7 +249,6 @@ export function matchmakingPlugin(): Plugin {
       return;
     }
 
-    // 5. Send Move
     if (pathname === '/api/matchmaking/move' && req.method === 'POST') {
       const body = await parseJsonBody(req);
       const { matchId, senderId, move } = body;
@@ -287,7 +271,6 @@ export function matchmakingPlugin(): Plugin {
       return;
     }
 
-    // 6. Send Chat
     if (pathname === '/api/matchmaking/chat' && req.method === 'POST') {
       const body = await parseJsonBody(req);
       const { matchId, senderId, senderName, text } = body;
@@ -307,7 +290,6 @@ export function matchmakingPlugin(): Plugin {
       return;
     }
 
-    // 7. Resign or Action
     if (pathname === '/api/matchmaking/action' && req.method === 'POST') {
       const body = await parseJsonBody(req);
       const { matchId, senderId, action } = body;
@@ -326,7 +308,6 @@ export function matchmakingPlugin(): Plugin {
       return;
     }
 
-    // 8. Custom Room: Create Room (with 30-Second Cooldown Enforcement!)
     if (pathname === '/api/matchmaking/room/create' && req.method === 'POST') {
       const body = await parseJsonBody(req);
       const { host, name, password, timeControl, colorPreference, customRoomId } = body;
@@ -337,7 +318,6 @@ export function matchmakingPlugin(): Plugin {
         return;
       }
 
-      // Check 30-second cooldown if player previously closed a room
       const lastClosed = roomCooldowns.get(host.id) || 0;
       const elapsedSinceClose = Date.now() - lastClosed;
       if (elapsedSinceClose < 30000) {
@@ -353,7 +333,6 @@ export function matchmakingPlugin(): Plugin {
         return;
       }
 
-      // Generate room ID e.g. "FOREST-8392" or sanitize provided code
       const roomId = (customRoomId || `FOREST-${Math.floor(1000 + Math.random() * 9000)}`).toUpperCase();
 
       const newRoom: CustomRoomRecord = {
@@ -383,7 +362,7 @@ export function matchmakingPlugin(): Plugin {
           ok: true,
           roomId,
           room: {
-            roomId: newRoom.roomId,
+            roomId,
             name: newRoom.name,
             hasPassword: Boolean(newRoom.password),
             timeControl: newRoom.timeControl,
@@ -396,7 +375,6 @@ export function matchmakingPlugin(): Plugin {
       return;
     }
 
-    // 9. Custom Room: Close / Delete Room (starts 30-second cooldown!)
     if (pathname === '/api/matchmaking/room/close' && req.method === 'POST') {
       const body = await parseJsonBody(req);
       const { roomId, playerId } = body;
@@ -406,13 +384,11 @@ export function matchmakingPlugin(): Plugin {
         room.status = 'closed';
         customRooms.delete(room.roomId);
 
-        // If an opponent was connected, inform them
         if (room.opponent) {
           sendToClient(room.opponent.id, 'ROOM_CLOSED', { roomId: room.roomId, reason: 'Host closed the room' });
         }
       }
 
-      // Apply 30-second cooldown to this player
       if (playerId) {
         roomCooldowns.set(playerId, Date.now());
       }
@@ -424,7 +400,6 @@ export function matchmakingPlugin(): Plugin {
       return;
     }
 
-    // 10. Custom Room: Check Cooldown Status
     if (pathname === '/api/matchmaking/room/cooldown' && req.method === 'GET') {
       const playerId = url.searchParams.get('playerId') || '';
       const lastClosed = roomCooldowns.get(playerId) || 0;
@@ -436,7 +411,6 @@ export function matchmakingPlugin(): Plugin {
       return;
     }
 
-    // 11. Custom Room: Join Room (with Room ID and Password validation!)
     if (pathname === '/api/matchmaking/room/join' && req.method === 'POST') {
       const body = await parseJsonBody(req);
       const { roomId, password, player } = body;
@@ -449,14 +423,12 @@ export function matchmakingPlugin(): Plugin {
         return;
       }
 
-      // Prevent host from joining own room as opponent
       if (room.host.id === player.id) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'CANNOT_JOIN_SELF', message: 'You are the host of this room.' }));
         return;
       }
 
-      // Validate Password
       if (room.password) {
         const inputPassword = (password || '').trim();
         if (inputPassword !== room.password) {
@@ -466,7 +438,6 @@ export function matchmakingPlugin(): Plugin {
         }
       }
 
-      // Colors assignment based on host's preference
       let isHostWhite = Math.random() > 0.5;
       if (room.colorPreference === 'white') isHostWhite = true;
       if (room.colorPreference === 'black') isHostWhite = false;
@@ -502,12 +473,8 @@ export function matchmakingPlugin(): Plugin {
         roomName: room.name,
       };
 
-      // Notify Host via SSE
       sendToClient(room.host.id, 'QUEUE_MATCH_FOUND', matchFoundPayload);
-
-      // Notify Joiner
       sendToClient(player.id, 'QUEUE_MATCH_FOUND', matchFoundPayload);
-
       broadcastPresence();
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -515,7 +482,6 @@ export function matchmakingPlugin(): Plugin {
       return;
     }
 
-    // 12. List Active Open Rooms
     if (pathname === '/api/matchmaking/rooms' && req.method === 'GET') {
       const openRooms = Array.from(customRooms.values())
         .filter((r) => r.status === 'waiting')
@@ -534,7 +500,6 @@ export function matchmakingPlugin(): Plugin {
       return;
     }
 
-    // 13. Legacy simple room join fallback
     if (pathname === '/api/matchmaking/room' && req.method === 'POST') {
       const body = await parseJsonBody(req);
       const { roomCode, player } = body;
