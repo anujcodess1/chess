@@ -56,7 +56,7 @@ const CURRENT_USER_KEY = 'grand_chess_current_user';
 const GAME_HISTORY_KEY = 'grand_chess_history';
 const SOLVED_PUZZLES_KEY = 'grand_chess_solved_puzzles';
 const DATA_VERSION_KEY = 'grand_chess_data_version';
-const DATA_VERSION = '3';
+const DATA_VERSION = '4';
 
 // One-time purge: wipe any previously stored accounts, sessions and demo data.
 (function purgeStoredData() {

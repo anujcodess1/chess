@@ -79,10 +79,15 @@ function emit(): void {
   for (const listener of [...listeners]) listener();
 }
 
+const MAX_TIMER_MS = 2147483647; // setTimeout overflow limit (~24.8 days)
+
 function armExpiryTimer(next: PlayerSession | null): void {
   if (expiryTimer !== undefined) clearTimeout(expiryTimer);
+  expiryTimer = undefined;
   if (!next) return;
   const delay = Math.max(0, next.expiresAt - Date.now());
+  // Expiries beyond the timer limit are enforced by getSnapshot on read instead.
+  if (delay > MAX_TIMER_MS) return;
   expiryTimer = setTimeout(() => {
     session = null;
     persist(null);
